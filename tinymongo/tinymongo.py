@@ -12,6 +12,7 @@ from operator import itemgetter
 from uuid import uuid1
 
 from tinydb import Query, TinyDB, where
+from tinydb import storages
 from .results import (
     InsertOneResult,
     InsertManyResult,
@@ -68,8 +69,8 @@ class TinyMongoClient(object):
                     return serialization
 
         """
-        return TinyDB.DEFAULT_STORAGE
-
+        return storages.JSONStorage
+    
     def __getitem__(self, key):
         """Gets a new or existing database based in key"""
         return TinyMongoDatabase(key, self._foldername, self._storage)
@@ -153,6 +154,14 @@ class TinyMongoCollection(object):
         :return: Integer representing the number of documents in the collection.
         """
         return self.find().count()
+
+    def count_documents(self, filter=None):
+        """
+        Counts the documents in the collection.
+        :return: Integer representing the number of documents in the collection.
+        """
+        return self.find(filter).count()
+
 
     def drop(self, **kwargs):
         """
@@ -438,7 +447,7 @@ class TinyMongoCollection(object):
 
         return UpdateResult(raw_result=result)
 
-    def find(self, filter=None, sort=None, skip=None, limit=None,
+    def find(self, filter=None, proj = None, sort=None, skip=None, limit=None,
              *args, **kwargs):
         """
         Finds all matching results
@@ -458,7 +467,13 @@ class TinyMongoCollection(object):
                 result = self.table.search(allcond)
             except (AttributeError, TypeError):
                 result = []
-
+        
+        if proj:
+            remove_list = [proj_key[0] == -1 for proj_key in proj]
+            if remove_list:
+                result = [test_dict.pop(key) for key in remove_list for test_dict in result]
+                
+        #TODO add projections that only keep
         result = TinyMongoCursor(
             result,
             sort=sort,
@@ -544,6 +559,21 @@ class TinyMongoCursor(object):
         if isinstance(key, int):
             return self.cursordat[key]
         return self.currentrec[key]
+
+    def __iter__(self):
+        self.cursorpos = -1
+        return self
+
+    def __next__(self):
+        """
+        Returns the next record
+
+        :return:
+        """
+        if not self.hasNext():
+            raise StopIteration
+        self.cursorpos += 1
+        return self.cursordat[self.cursorpos]
 
     def paginate(self, skip, limit):
         """Paginate list of records"""
